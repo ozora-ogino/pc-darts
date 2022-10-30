@@ -1,5 +1,5 @@
-import torch
 import numpy as np
+import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
@@ -24,19 +24,13 @@ class Architect(object):
         loss = self.model._loss(input, target)
         theta = _concat(self.model.parameters()).data
         try:
-            moment = _concat(
-                network_optimizer.state[v]["momentum_buffer"]
-                for v in self.model.parameters()
-            ).mul_(self.network_momentum)
+            moment = _concat(network_optimizer.state[v]["momentum_buffer"] for v in self.model.parameters()).mul_(
+                self.network_momentum
+            )
         except:
             moment = torch.zeros_like(theta)
-        dtheta = (
-            _concat(torch.autograd.grad(loss, self.model.parameters())).data
-            + self.network_weight_decay * theta
-        )
-        unrolled_model = self._construct_model_from_theta(
-            theta.sub(eta, moment + dtheta)
-        )
+        dtheta = _concat(torch.autograd.grad(loss, self.model.parameters())).data + self.network_weight_decay * theta
+        unrolled_model = self._construct_model_from_theta(theta.sub(eta, moment + dtheta))
         return unrolled_model
 
     def step(
@@ -76,9 +70,7 @@ class Architect(object):
         eta,
         network_optimizer,
     ):
-        unrolled_model = self._compute_unrolled_model(
-            input_train, target_train, eta, network_optimizer
-        )
+        unrolled_model = self._compute_unrolled_model(input_train, target_train, eta, network_optimizer)
         unrolled_loss = unrolled_model._loss(input_valid, target_valid)
 
         unrolled_loss.backward()

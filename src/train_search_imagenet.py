@@ -1,55 +1,39 @@
+import argparse
+import glob
+import logging
 import os
 import sys
 import time
-import glob
+
 import numpy as np
 import torch
-import utils
-import logging
-import argparse
+import torch.backends.cudnn as cudnn
 import torch.nn as nn
-import torch.utils
 import torch.nn.functional as F
+import torch.utils
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
-import torch.backends.cudnn as cudnn
 
+import utils
 from model_search_imagenet import Network
 
-
 parser = argparse.ArgumentParser("imagenet")
-parser.add_argument(
-    "--workers", type=int, default=0, help="number of workers to load dataset"
-)
-parser.add_argument(
-    "--data", type=str, default="/tmp/cache/", help="location of the data corpus"
-)
+parser.add_argument("--workers", type=int, default=0, help="number of workers to load dataset")
+parser.add_argument("--data", type=str, default="/tmp/cache/", help="location of the data corpus")
 parser.add_argument("--batch_size", type=int, default=1024, help="batch size")
-parser.add_argument(
-    "--learning_rate", type=float, default=0.5, help="init learning rate"
-)
-parser.add_argument(
-    "--learning_rate_min", type=float, default=0.0, help="min learning rate"
-)
+parser.add_argument("--learning_rate", type=float, default=0.5, help="init learning rate")
+parser.add_argument("--learning_rate_min", type=float, default=0.0, help="min learning rate")
 parser.add_argument("--momentum", type=float, default=0.9, help="momentum")
 parser.add_argument("--weight_decay", type=float, default=3e-4, help="weight decay")
 parser.add_argument("--report_freq", type=float, default=50, help="report frequency")
 parser.add_argument("--epochs", type=int, default=50, help="num of training epochs")
-parser.add_argument(
-    "--init_channels", type=int, default=16, help="num of init channels"
-)
+parser.add_argument("--init_channels", type=int, default=16, help="num of init channels")
 parser.add_argument("--layers", type=int, default=8, help="total number of layers")
-parser.add_argument(
-    "--model_path", type=str, default="saved_models", help="path to save the model"
-)
+parser.add_argument("--model_path", type=str, default="saved_models", help="path to save the model")
 parser.add_argument("--cutout", action="store_true", default=False, help="use cutout")
 parser.add_argument("--cutout_length", type=int, default=16, help="cutout length")
-parser.add_argument(
-    "--drop_path_prob", type=float, default=0.3, help="drop path probability"
-)
-parser.add_argument(
-    "--save", type=str, default="/tmp/checkpoints/", help="experiment name"
-)
+parser.add_argument("--drop_path_prob", type=float, default=0.3, help="drop path probability")
+parser.add_argument("--save", type=str, default="/tmp/checkpoints/", help="experiment name")
 parser.add_argument("--seed", type=int, default=2, help="random seed")
 parser.add_argument("--grad_clip", type=float, default=5, help="gradient clipping")
 parser.add_argument(
@@ -77,9 +61,7 @@ parser.add_argument("--note", type=str, default="try", help="note for this run")
 
 args = parser.parse_args()
 
-args.save = "logs/{}search-{}-{}".format(
-    args.save, args.note, time.strftime("%Y%m%d-%H%M%S")
-)
+args.save = "logs/{}search-{}-{}".format(args.save, args.note, time.strftime("%Y%m%d-%H%M%S"))
 utils.create_exp_dir(args.save, scripts_to_save=glob.glob("*.py"))
 
 log_format = "%(asctime)s %(message)s"
@@ -119,9 +101,7 @@ def main():
     traindir = data_dir = os.path.join(data_dir, "train")
     valdir = data_dir = os.path.join(data_dir, "val")
 
-    normalize = transforms.Normalize(
-        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-    )
+    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     criterion = nn.CrossEntropyLoss()
     criterion = criterion.cuda()
     # dataset split
@@ -248,9 +228,7 @@ def main():
         # utils.save(model, os.path.join(args.save, 'weights.pt'))
 
 
-def train(
-    train_queue, valid_queue, model, optimizer, optimizer_a, criterion, lr, epoch
-):
+def train(train_queue, valid_queue, model, optimizer, optimizer_a, criterion, lr, epoch):
     objs = utils.AvgrageMeter()
     top1 = utils.AvgrageMeter()
     top5 = utils.AvgrageMeter()

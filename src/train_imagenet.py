@@ -1,61 +1,41 @@
-import os
-import sys
-import numpy as np
-import time
-import torch
-import utils
+import argparse
 import glob
 import logging
-import argparse
+import os
+import sys
+import time
+
+import numpy as np
+import torch
+import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import torch.utils
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
-import torch.backends.cudnn as cudnn
 
+import utils
 from model import NetworkImageNet as Network
 
-
 parser = argparse.ArgumentParser("training imagenet")
-parser.add_argument(
-    "--workers", type=int, default=32, help="number of workers to load dataset"
-)
+parser.add_argument("--workers", type=int, default=32, help="number of workers to load dataset")
 parser.add_argument("--batch_size", type=int, default=1024, help="batch size")
-parser.add_argument(
-    "--learning_rate", type=float, default=0.5, help="init learning rate"
-)
+parser.add_argument("--learning_rate", type=float, default=0.5, help="init learning rate")
 parser.add_argument("--momentum", type=float, default=0.9, help="momentum")
 parser.add_argument("--weight_decay", type=float, default=3e-5, help="weight decay")
 parser.add_argument("--report_freq", type=float, default=100, help="report frequency")
 parser.add_argument("--epochs", type=int, default=250, help="num of training epochs")
-parser.add_argument(
-    "--init_channels", type=int, default=48, help="num of init channels"
-)
+parser.add_argument("--init_channels", type=int, default=48, help="num of init channels")
 parser.add_argument("--layers", type=int, default=14, help="total number of layers")
-parser.add_argument(
-    "--auxiliary", action="store_true", default=False, help="use auxiliary tower"
-)
-parser.add_argument(
-    "--auxiliary_weight", type=float, default=0.4, help="weight for auxiliary loss"
-)
-parser.add_argument(
-    "--drop_path_prob", type=float, default=0, help="drop path probability"
-)
-parser.add_argument(
-    "--save", type=str, default="/tmp/checkpoints/", help="experiment name"
-)
+parser.add_argument("--auxiliary", action="store_true", default=False, help="use auxiliary tower")
+parser.add_argument("--auxiliary_weight", type=float, default=0.4, help="weight for auxiliary loss")
+parser.add_argument("--drop_path_prob", type=float, default=0, help="drop path probability")
+parser.add_argument("--save", type=str, default="/tmp/checkpoints/", help="experiment name")
 parser.add_argument("--seed", type=int, default=0, help="random seed")
-parser.add_argument(
-    "--arch", type=str, default="PCDARTS", help="which architecture to use"
-)
+parser.add_argument("--arch", type=str, default="PCDARTS", help="which architecture to use")
 parser.add_argument("--grad_clip", type=float, default=5.0, help="gradient clipping")
 parser.add_argument("--label_smooth", type=float, default=0.1, help="label smoothing")
-parser.add_argument(
-    "--lr_scheduler", type=str, default="linear", help="lr scheduler, linear or cosine"
-)
-parser.add_argument(
-    "--tmp_data_dir", type=str, default="/tmp/cache/", help="temp data dir"
-)
+parser.add_argument("--lr_scheduler", type=str, default="linear", help="lr scheduler, linear or cosine")
+parser.add_argument("--tmp_data_dir", type=str, default="/tmp/cache/", help="temp data dir")
 parser.add_argument("--note", type=str, default="try", help="note for this run")
 
 
@@ -131,18 +111,14 @@ def main():
     data_dir = os.path.join(args.tmp_data_dir, "imagenet")
     traindir = os.path.join(data_dir, "train")
     validdir = os.path.join(data_dir, "val")
-    normalize = transforms.Normalize(
-        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-    )
+    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     train_data = dset.ImageFolder(
         traindir,
         transforms.Compose(
             [
                 transforms.RandomResizedCrop(224),
                 transforms.RandomHorizontalFlip(),
-                transforms.ColorJitter(
-                    brightness=0.4, contrast=0.4, saturation=0.4, hue=0.2
-                ),
+                transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.2),
                 transforms.ToTensor(),
                 normalize,
             ]
@@ -177,9 +153,7 @@ def main():
     )
 
     #    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.decay_period, gamma=args.gamma)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, float(args.epochs)
-    )
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, float(args.epochs))
     best_acc_top1 = 0
     best_acc_top5 = 0
     lr = args.learning_rate

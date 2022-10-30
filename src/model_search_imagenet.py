@@ -1,25 +1,20 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from operations import *
 from torch.autograd import Variable
-from genotypes import PRIMITIVES
-from genotypes import Genotype
+
+from genotypes import PRIMITIVES, Genotype
+from operations import *
 
 
-def channel_shuffle(x, groups):
+def channel_shuffle(x: torch.Tensor, groups: int):
     batchsize, num_channels, height, width = x.data.size()
-
     channels_per_group = num_channels // groups
-
     # reshape
     x = x.view(batchsize, groups, channels_per_group, height, width)
-
     x = torch.transpose(x, 1, 2).contiguous()
-
     # flatten
     x = x.view(batchsize, -1, height, width)
-
     return x
 
 
@@ -63,9 +58,7 @@ class MixedOp(nn.Module):
 
 
 class Cell(nn.Module):
-    def __init__(
-        self, steps, multiplier, C_prev_prev, C_prev, C, reduction, reduction_prev
-    ):
+    def __init__(self, steps, multiplier, C_prev_prev, C_prev, C, reduction, reduction_prev):
         super(Cell, self).__init__()
         self.reduction = reduction
 
@@ -93,9 +86,7 @@ class Cell(nn.Module):
         offset = 0
         for i in range(self._steps):
             s = sum(
-                weights2[offset + j].to(
-                    self._ops[offset + j](h, weights[offset + j]).device
-                )
+                weights2[offset + j].to(self._ops[offset + j](h, weights[offset + j]).device)
                 * self._ops[offset + j](h, weights[offset + j])
                 for j, h in enumerate(states)
             )
@@ -168,9 +159,7 @@ class Network(nn.Module):
         self._initialize_alphas()
 
     def new(self):
-        model_new = Network(
-            self._C, self._num_classes, self._layers, self._criterion
-        ).cuda()
+        model_new = Network(self._C, self._num_classes, self._layers, self._criterion).cuda()
         for x, y in zip(model_new.arch_parameters(), self.arch_parameters()):
             x.data.copy_(y.data)
         return model_new
@@ -214,12 +203,8 @@ class Network(nn.Module):
         k = sum(1 for i in range(self._steps) for n in range(2 + i))
         num_ops = len(PRIMITIVES)
 
-        self.alphas_normal = Variable(
-            1e-3 * torch.randn(k, num_ops).cuda(), requires_grad=True
-        )
-        self.alphas_reduce = Variable(
-            1e-3 * torch.randn(k, num_ops).cuda(), requires_grad=True
-        )
+        self.alphas_normal = Variable(1e-3 * torch.randn(k, num_ops).cuda(), requires_grad=True)
+        self.alphas_reduce = Variable(1e-3 * torch.randn(k, num_ops).cuda(), requires_grad=True)
         self.betas_normal = Variable(1e-3 * torch.randn(k).cuda(), requires_grad=True)
         self.betas_reduce = Variable(1e-3 * torch.randn(k).cuda(), requires_grad=True)
         self._arch_parameters = [
@@ -245,11 +230,7 @@ class Network(nn.Module):
                     W[j, :] = W[j, :] * W2[j]
                 edges = sorted(
                     range(i + 2),
-                    key=lambda x: -max(
-                        W[x][k]
-                        for k in range(len(W[x]))
-                        if k != PRIMITIVES.index("none")
-                    ),
+                    key=lambda x: -max(W[x][k] for k in range(len(W[x])) if k != PRIMITIVES.index("none")),
                 )[:2]
 
                 # edges = sorted(range(i + 2), key=lambda x: -W2[x])[:2]

@@ -1,6 +1,8 @@
 import sys
-import genotypes
+
 from graphviz import Digraph
+
+import genotypes
 
 
 def plot(genotype, filename):

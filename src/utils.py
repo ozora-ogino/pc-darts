@@ -1,7 +1,8 @@
 import os
+import shutil
+
 import numpy as np
 import torch
-import shutil
 import torchvision.transforms as transforms
 from torch.autograd import Variable
 
@@ -83,14 +84,7 @@ def _data_transforms_cifar10(args):
 
 
 def count_parameters_in_MB(model):
-    return (
-        np.sum(
-            np.prod(v.size())
-            for name, v in model.named_parameters()
-            if "auxiliary" not in name
-        )
-        / 1e6
-    )
+    return np.sum(np.prod(v.size()) for name, v in model.named_parameters() if "auxiliary" not in name) / 1e6
 
 
 def save_checkpoint(state, is_best, save):
@@ -112,9 +106,7 @@ def load(model, model_path):
 def drop_path(x, drop_prob):
     if drop_prob > 0.0:
         keep_prob = 1.0 - drop_prob
-        mask = Variable(
-            torch.cuda.FloatTensor(x.size(0), 1, 1, 1).bernoulli_(keep_prob)
-        )
+        mask = Variable(torch.cuda.FloatTensor(x.size(0), 1, 1, 1).bernoulli_(keep_prob))
         x.div_(keep_prob)
         x.mul_(mask)
     return x
