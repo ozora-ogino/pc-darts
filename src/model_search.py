@@ -10,6 +10,10 @@ from operations import *
 
 
 def channel_shuffle(x: torch.Tensor, groups: int) -> torch.Tensor:
+    """
+    Channel shuffle proposed in ShuffleNetV2.
+    https://arxiv.org/abs/1807.11164
+    """
     batchsize, num_channels, height, width = x.data.size()
     channels_per_group = num_channels // groups
     # reshape
@@ -33,13 +37,14 @@ class MixedOp(nn.Module):
                 op = nn.Sequential(op, nn.BatchNorm2d(C // self.k, affine=False))
             self._ops.append(op)
 
-    def forward(self, x: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, weights_alpha: torch.Tensor) -> torch.Tensor:
         # Partial Connection: channel proportion k=4.
         dim_2 = x.shape[1]
         op_inputs = x[:, : dim_2 // self.k, :, :]
         skip = x[:, dim_2 // self.k :, :, :]
 
-        op_outs = sum(w * op(op_inputs) for w, op in zip(weights, self._ops))
+        # Input node is Weighted by alpha.
+        op_outs = sum(w * op(op_inputs) for w, op in zip(weights_alpha, self._ops))
         # Reduction cell needs pooling before concat.
         skip = self.mp(skip) if op_outs.shape[2] != x.shape[2] else skip
         ans = torch.cat([op_outs, skip], dim=1)
@@ -79,7 +84,11 @@ class Cell(nn.Module):
                 self._ops.append(op)
 
     def forward(
-        self, s0: torch.Tensor, s1: torch.Tensor, weights: torch.Tensor, weights2: torch.Tensor
+        self,
+        s0: torch.Tensor,
+        s1: torch.Tensor,
+        weights_alpha: torch.Tensor,
+        weights_beta: torch.Tensor,
     ) -> torch.Tensor:
         s0 = self.preprocess0(s0)
         s1 = self.preprocess1(s1)
@@ -87,7 +96,10 @@ class Cell(nn.Module):
         states = [s0, s1]
         offset = 0
         for _ in range(self._steps):
-            s = sum(weights2[offset + j] * self._ops[offset + j](h, weights[offset + j]) for j, h in enumerate(states))
+            s = sum(
+                weights_beta[offset + j] * self._ops[offset + j](h, weights_alpha[offset + j])
+                for j, h in enumerate(states)
+            )
             offset += len(states)
             states.append(s)
 
@@ -152,36 +164,36 @@ class Network(nn.Module):
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         s0 = s1 = self.stem(input)
         for _, cell in enumerate(self.cells):
-            weights, weights2 = self._forward_search(cell)
-            s0, s1 = s1, cell(s0, s1, weights, weights2)
+            weights_alpha, weights_beta = self._forward_search(cell)
+            s0, s1 = s1, cell(s0, s1, weights_alpha, weights_beta)
         out = self.global_pooling(s1)
         logits = self.classifier(out.view(out.size(0), -1))
         return logits
 
     def _forward_search(self, cell: Cell) -> Tuple[torch.Tensor, torch.Tensor]:
         if cell.reduction:
-            weights = F.softmax(self.alphas_reduce, dim=-1)
+            weights_alpha = F.softmax(self.alphas_reduce, dim=-1)
             n = 3
             start = 2
-            weights2 = F.softmax(self.betas_reduce[0:2], dim=-1)
+            weights_beta = F.softmax(self.betas_reduce[0:2], dim=-1)
             for _ in range(self._steps - 1):
                 end = start + n
                 tw2 = F.softmax(self.betas_reduce[start:end], dim=-1)
                 start = end
                 n += 1
-                weights2 = torch.cat([weights2, tw2], dim=0)
+                weights_beta = torch.cat([weights_beta, tw2], dim=0)
         else:
-            weights = F.softmax(self.alphas_normal, dim=-1)
+            weights_alpha = F.softmax(self.alphas_normal, dim=-1)
             n = 3
             start = 2
-            weights2 = F.softmax(self.betas_normal[0:2], dim=-1)
+            weights_beta = F.softmax(self.betas_normal[0:2], dim=-1)
             for _ in range(self._steps - 1):
                 end = start + n
                 tw2 = F.softmax(self.betas_normal[start:end], dim=-1)
                 start = end
                 n += 1
-                weights2 = torch.cat([weights2, tw2], dim=0)
-        return weights, weights2
+                weights_beta = torch.cat([weights_beta, tw2], dim=0)
+        return weights_alpha, weights_beta
 
     def _loss(self, input, target):
         logits = self(input)
@@ -206,27 +218,26 @@ class Network(nn.Module):
         return self._arch_parameters
 
     def genotype(self):
-        def _parse(weights, weights2):
+        def _parse(weights_alpha, weights_beta):
             gene = []
             n = 2
             start = 0
             for i in range(self._steps):
                 end = start + n
-                W = weights[start:end].copy()
-                W2 = weights2[start:end].copy()
+                W_ALPHA = weights_alpha[start:end].copy()
+                W_BETA = weights_beta[start:end].copy()
                 for j in range(n):
-                    W[j, :] = W[j, :] * W2[j]
+                    W_ALPHA[j, :] = W_ALPHA[j, :] * W_BETA[j]
                 edges = sorted(
                     range(i + 2),
-                    key=lambda x: -max(W[x][k] for k in range(len(W[x])) if k != PRIMITIVES.index("none")),
+                    key=lambda x: -max(W_ALPHA[x][k] for k in range(len(W_ALPHA[x])) if k != PRIMITIVES.index("none")),
                 )[:2]
 
-                # edges = sorted(range(i + 2), key=lambda x: -W2[x])[:2]
                 for j in edges:
                     k_best = None
-                    for k in range(len(W[j])):
+                    for k in range(len(W_ALPHA[j])):
                         if k != PRIMITIVES.index("none"):
-                            if k_best is None or W[j][k] > W[j][k_best]:
+                            if k_best is None or W_ALPHA[j][k] > W_ALPHA[j][k_best]:
                                 k_best = k
                     gene.append((PRIMITIVES[k_best], j))
                 start = end
@@ -237,7 +248,7 @@ class Network(nn.Module):
         start = 2
         weightsr2 = F.softmax(self.betas_reduce[0:2], dim=-1)
         weightsn2 = F.softmax(self.betas_normal[0:2], dim=-1)
-        for i in range(self._steps - 1):
+        for _ in range(self._steps - 1):
             end = start + n
             tw2 = F.softmax(self.betas_reduce[start:end], dim=-1)
             tn2 = F.softmax(self.betas_normal[start:end], dim=-1)
