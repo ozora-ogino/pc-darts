@@ -15,7 +15,7 @@ import torchvision.datasets as dset
 import torchvision.transforms as transforms
 
 import utils
-from model_search_imagenet import Network
+from model_search import Network
 
 parser = argparse.ArgumentParser("imagenet")
 parser.add_argument("--workers", type=int, default=0, help="number of workers to load dataset")
@@ -35,6 +35,7 @@ parser.add_argument("--cutout_length", type=int, default=16, help="cutout length
 parser.add_argument("--drop_path_prob", type=float, default=0.3, help="drop path probability")
 parser.add_argument("--save", type=str, default="/tmp/checkpoints/", help="experiment name")
 parser.add_argument("--seed", type=int, default=2, help="random seed")
+parser.add_argument("--k", type=int, default=2, help="")
 parser.add_argument("--grad_clip", type=float, default=5, help="gradient clipping")
 parser.add_argument(
     "--unrolled",
@@ -75,7 +76,7 @@ fh = logging.FileHandler(os.path.join(args.save, "log.txt"))
 fh.setFormatter(logging.Formatter(log_format))
 logging.getLogger().addHandler(fh)
 
-data_dir = os.path.join(args.tmp_data_dir, "imagenet_search")
+
 # data preparation, we random sample 10% and 2.5% from training set(each class) as train and val, respectively.
 # Note that the data sampling can not use torch.utils.data.sampler.SubsetRandomSampler as imagenet is too large
 CLASSES = 1000
@@ -87,17 +88,13 @@ def main():
         sys.exit(1)
 
     np.random.seed(args.seed)
-    # torch.cuda.set_device(args.gpu)
     cudnn.benchmark = True
     torch.manual_seed(args.seed)
     cudnn.enabled = True
     torch.cuda.manual_seed(args.seed)
-    # logging.info('gpu device = %d' % args.gpu)
     logging.info("args = %s", args)
-    # dataset_dir = '/cache/'
-    # pre.split_dataset(dataset_dir)
-    # sys.exit(1)
     # dataset prepare
+    data_dir = os.path.join(args.tmp_data_dir, "imagenet_search")
     traindir = data_dir = os.path.join(data_dir, "train")
     valdir = data_dir = os.path.join(data_dir, "val")
 
@@ -143,7 +140,7 @@ def main():
     print("# images to train network: %d" % num_train)
     print("# images to validate network: %d" % num_val)
 
-    model = Network(args.init_channels, CLASSES, args.layers, criterion)
+    model = Network(args.init_channels, CLASSES, args.layers, criterion, k=args.k)
     model = torch.nn.DataParallel(model)
     model = model.cuda()
     logging.info("param size = %fMB", utils.count_parameters_in_MB(model))

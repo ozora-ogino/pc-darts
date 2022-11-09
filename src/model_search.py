@@ -62,6 +62,7 @@ class Cell(nn.Module):
         C: int,
         reduction: bool,
         reduction_prev: bool,
+        k: int,
     ):
         super(Cell, self).__init__()
         self.reduction = reduction
@@ -80,7 +81,7 @@ class Cell(nn.Module):
         for i in range(self._steps):
             for j in range(2 + i):
                 stride = 2 if reduction and j < 2 else 1
-                op = MixedOp(C, stride)
+                op = MixedOp(C, stride, k)
                 self._ops.append(op)
 
     def forward(
@@ -116,6 +117,7 @@ class Network(nn.Module):
         steps: int = 4,
         multiplier: int = 4,
         stem_multiplier: int = 3,
+        k: int = 4,
     ):
         super(Network, self).__init__()
         self._C = C
@@ -145,6 +147,7 @@ class Network(nn.Module):
                 C_curr,
                 reduction,
                 reduction_prev,
+                k,
             )
             reduction_prev = reduction
             self.cells += [cell]

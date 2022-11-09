@@ -19,42 +19,30 @@ def channel_shuffle(x: torch.Tensor, groups: int):
 
 
 class MixedOp(nn.Module):
-    def __init__(self, C, stride):
+    def __init__(self, C, stride, k: int = 2):
         super(MixedOp, self).__init__()
         self._ops = nn.ModuleList()
         self.mp = nn.MaxPool2d(2, 2)
-        # self.bn=nn.BatchNorm2d(C//4, affine=False)
-        # self.conv1 = nn.Conv2d(C//4,C//4,kernel_size=1,stride=1,padding=0,bias=False)
+        self.k = k
         for primitive in PRIMITIVES:
-            op = OPS[primitive](C // 2, stride, False)
+            op = OPS[primitive](C // self.k, stride, False)
             if "pool" in primitive:
-                op = nn.Sequential(op, nn.BatchNorm2d(C // 2, affine=False))
+                op = nn.Sequential(op, nn.BatchNorm2d(C // self.k, affine=False))
             self._ops.append(op)
 
-    def forward(self, x, weights):
-
+    def forward(self, x: torch.Tensor, weights_alpha: torch.Tensor):
+        # Partial Connection: channel proportion k=4.
         dim_2 = x.shape[1]
-        xtemp = x[:, : dim_2 // 2, :, :]
-        xtemp2 = x[:, dim_2 // 2 :, :, :]
-        xtemp3 = x[:, dim_2 // 4 : dim_2 // 2, :, :]
-        xtemp4 = x[:, dim_2 // 2 :, :, :]
+        op_inputs = x[:, : dim_2 // self.k, :, :]
+        skip = x[:, dim_2 // self.k :, :, :]
 
-        temp1 = sum(w.to(xtemp.device) * op(xtemp) for w, op in zip(weights, self._ops))
-        if temp1.shape[2] == x.shape[2]:
-            # ans = torch.cat([temp1,self.bn(self.conv1(xtemp3))],dim=1)
-            # ans = torch.cat([ans,xtemp4],dim=1)
-            ans = torch.cat([temp1, xtemp2], dim=1)
-            # ans = torch.cat([ans,x[:, 2*dim_2// 4: , :, :]],dim=1)
-        else:
-            # ans = torch.cat([temp1,self.bn(self.conv1(self.mp(xtemp3)))],dim=1)
-            # ans = torch.cat([ans,self.mp(xtemp4)],dim=1)
-
-            ans = torch.cat([temp1, self.mp(xtemp2)], dim=1)
-
-        ans = channel_shuffle(ans, 2)
+        # Input node is Weighted by alpha.
+        op_outs = sum(w * op(op_inputs) for w, op in zip(weights_alpha, self._ops))
+        # Reduction cell needs pooling before concat.
+        skip = self.mp(skip) if op_outs.shape[2] != x.shape[2] else skip
+        ans = torch.cat([op_outs, skip], dim=1)
+        ans = channel_shuffle(ans, self.k)
         return ans
-
-        # return sum(w.to(x.device) * op(x) for w, op in zip(weights, self._ops))
 
 
 class Cell(nn.Module):
@@ -84,13 +72,12 @@ class Cell(nn.Module):
 
         states = [s0, s1]
         offset = 0
-        for i in range(self._steps):
+        for _ in range(self._steps):
             s = sum(
                 weights2[offset + j].to(self._ops[offset + j](h, weights[offset + j]).device)
                 * self._ops[offset + j](h, weights[offset + j])
                 for j, h in enumerate(states)
             )
-            # s = channel_shuffle(s,4)
             offset += len(states)
             states.append(s)
 
